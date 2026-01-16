@@ -4,6 +4,9 @@ import openai
 import math
 import json
 import pathlib
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from datetime import datetime
 
 with open("keys.json", "r", encoding="utf-8") as f:
     keys = json.load(f)
@@ -157,6 +160,150 @@ def compute_totals(df):
 
     return df
 
+def export_to_excel(df, output_path='nutrition_report.xlsx'):
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+    from datetime import datetime
+    
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Харчування"
+    
+    # Стилі
+    header_fill = PatternFill(start_color="FFD966", end_color="FFD966", fill_type="solid")
+    header_font = Font(bold=True, size=11)
+    day_fill = PatternFill(start_color="E7E6E6", end_color="E7E6E6", fill_type="solid")
+    day_font = Font(bold=True, size=10)
+    border = Border(
+        left=Side(style='thin'),
+        right=Side(style='thin'),
+        top=Side(style='thin'),
+        bottom=Side(style='thin')
+    )
+    
+    center_align = Alignment(horizontal='center', vertical='center')
+    left_align = Alignment(horizontal='left', vertical='center')
+    right_align = Alignment(horizontal='right', vertical='center')
+    
+    headers = ['Index', 'Дата', 'Прийом їжі', 'Страви', 'Білки (г)', 'Жири (г)', 
+               'Вуглеводи (г)', 'Цукри (г)', 'Вага (г)', 'Ккал', 'Ккал за прийомом', 'Ккал за день']
+    
+    for col_idx, header in enumerate(headers, start=1):
+        cell = ws.cell(row=1, column=col_idx)
+        cell.value = header
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = center_align
+        cell.border = border
+    
+    df_sorted = df.sort_values('назва').reset_index(drop=True)
+    
+    current_row = 2
+    row_index = 9
+    prev_meal = None
+    meal_start_row = 2
+    
+    for idx, row in df_sorted.iterrows():
+        cell = ws.cell(row=current_row, column=1)
+        cell.value = row_index
+        cell.border = border
+        cell.alignment = center_align
+        
+        cell = ws.cell(row=current_row, column=2)
+        cell.value = datetime.now().strftime('%d.%m.%Y')
+        cell.border = border
+        cell.alignment = center_align
+        
+        cell = ws.cell(row=current_row, column=3)
+        cell.value = "Сніданок"
+        cell.border = border
+        cell.alignment = center_align
+        
+        current_meal = "Сніданок" # need to add day method
+        
+        if prev_meal is not None and prev_meal != current_meal and meal_start_row < current_row:
+            formula_cell = ws.cell(row=meal_start_row, column=11)
+            formula_cell.value = f'=SUM(J{meal_start_row}:J{current_row - 1})'
+            formula_cell.font = Font(bold=True)
+            formula_cell.fill = PatternFill(start_color="E7E6E6", end_color="E7E6E6", fill_type="solid")
+            meal_start_row = current_row
+        
+        cell = ws.cell(row=current_row, column=4)
+        cell.value = row['назва']
+        cell.border = border
+        cell.alignment = left_align
+        
+        cell = ws.cell(row=current_row, column=5)
+        cell.value = round(row['білки_факт'], 2)
+        cell.border = border
+        cell.alignment = right_align
+        cell.number_format = '0.00'
+        
+        cell = ws.cell(row=current_row, column=6)
+        cell.value = round(row['жири_факт'], 2)
+        cell.border = border
+        cell.alignment = right_align
+        cell.number_format = '0.00'
+        
+        cell = ws.cell(row=current_row, column=7)
+        cell.value = round(row['вуглеводи_факт'], 2)
+        cell.border = border
+        cell.alignment = right_align
+        cell.number_format = '0.00'
+        
+        cell = ws.cell(row=current_row, column=8)
+        cell.value = round(row['цукри_факт'], 2)
+        cell.border = border
+        cell.alignment = right_align
+        cell.number_format = '0.00'
+        
+        cell = ws.cell(row=current_row, column=9)
+        cell.value = round(row['вага'], 1)
+        cell.border = border
+        cell.alignment = right_align
+        cell.number_format = '0.0'
+        
+        cell = ws.cell(row=current_row, column=10)
+        cell.value = round(row['ккал_факт'], 0)
+        cell.border = border
+        cell.alignment = right_align
+        cell.number_format = '0'
+        
+        cell = ws.cell(row=current_row, column=11)
+        cell.border = border
+        cell.alignment = right_align
+        cell.number_format = '0'
+        
+        cell = ws.cell(row=current_row, column=12)
+        cell.value = 0
+        cell.border = border
+        cell.alignment = right_align
+        cell.number_format = '0'
+        
+        prev_meal = current_meal
+        current_row += 1
+        row_index += 1
+    
+    if meal_start_row < current_row:
+        formula_cell = ws.cell(row=meal_start_row, column=11)
+        formula_cell.value = f'=SUM(J{meal_start_row}:J{current_row - 1})'
+        formula_cell.font = Font(bold=True)
+        formula_cell.fill = PatternFill(start_color="E7E6E6", end_color="E7E6E6", fill_type="solid")
+    
+    ws.column_dimensions['A'].width = 8
+    ws.column_dimensions['B'].width = 12
+    ws.column_dimensions['C'].width = 12
+    ws.column_dimensions['D'].width = 25
+    for col in ['E', 'F', 'G', 'H', 'I', 'J', 'K', 'L']:
+        ws.column_dimensions[col].width = 12
+    
+    ws.freeze_panes = 'A2'
+    
+    wb.save(output_path)
+    print(f"\n✅ Excel-файл збережено: {output_path}")
+
+
 if __name__ == "__main__":
     df = process_food_log('food_log.txt', 'food_db.csv')
 
@@ -169,3 +316,5 @@ if __name__ == "__main__":
 
     df = compute_totals(df)
     print(df)
+    export_to_excel(df, 'nutrition_report.xlsx')
+
